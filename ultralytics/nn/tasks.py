@@ -26,16 +26,22 @@ from ultralytics.nn.modules import (
     SPPELAN,
     SPPF,
     A2C2f,
+    A3C2f,
     AConv,
     ADown,
     Bottleneck,
     BottleneckCSP,
     C2f,
+    C2f_LSKA,
     C2fAttn,
     C2fCIB,
     C2fPSA,
     C3Ghost,
     C3k2,
+    C3k2_Dynamic,
+    C3k2MA,
+    C3k2MA_Lite,
+    C3k2UltraPro,
     C3x,
     CBFuse,
     CBLinear,
@@ -47,6 +53,7 @@ from ultralytics.nn.modules import (
     Detect,
     DWConv,
     DWConvTranspose2d,
+    DyC2f,
     Focus,
     GhostBottleneck,
     GhostConv,
@@ -66,21 +73,14 @@ from ultralytics.nn.modules import (
     SCDown,
     Segment,
     Segment26,
+    SparseDualMoE,
     TorchVision,
+    WaveC2f,
     WorldDetect,
     YOLOEDetect,
     YOLOESegment,
     YOLOESegment26,
     v10Detect,
-    C3k2_Dynamic,
-    C2f_LSKA,
-    WaveC2f,
-    DyC2f,
-    A3C2f,
-    C3k2UltraPro,
-    C3k2MA,
-    C3k2MA_Lite,
-    SparseDualMoE
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, WINDOWS, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1625,7 +1625,7 @@ def parse_model(d, ch, verbose=True):
             C3k2UltraPro,
             C3k2MA,
             C3k2MA_Lite,
-            SparseDualMoE
+            SparseDualMoE,
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments
