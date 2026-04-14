@@ -62,6 +62,6 @@
 - 改用 **Soft Top‑K**（如加权求和所有专家，或 Gumbel-Softmax）。
 - 负载均衡损失使用 **可微的 soft 计数**（直接使用 `router_probs`）。
 - 提高负载均衡系数（如 0.5）且不衰减。
-- 延长 warmup 至 20%~30% 步数，探索率提升至 0.3~0.5。
+- 延长 warmup 至 20%~30% 步数。
 - 设计 **显著不同的专家结构**（不同 kernel size、dilation、残差连接）。
 - 在 COCO 上训练 300+ epoch 验证。
