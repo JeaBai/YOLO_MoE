@@ -1,0 +1,49 @@
+# 失败
+nc: 80
+end2end: True
+reg_max: 1
+scales:
+  n: [0.50, 0.25, 1024]
+  s: [0.50, 0.50, 1024]
+  m: [0.50, 1.00, 512]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.50, 512]
+
+backbone:
+  - [-1, 1, Conv, [64, 3, 2]]          # 0-P1/2
+  - [-1, 1, Conv, [128, 3, 2]]         # 1-P2/4
+  - [-1, 2, C3k2, [256, False, 0.25]]  # 2
+  - [-1, 1, Conv, [256, 3, 2]]         # 3-P3/8
+  - [-1, 2, C3k2, [256, True]]         # 4  (P3 保持 C3k2)
+
+  - [-1, 1, Conv, [512, 3, 2]]         # 5-P4/16
+  # P4 层使用 UltraOptimizedMoE（无通道拆分，强化平衡）
+  - [-1, 2, UltraOptimizedMoE, [512, 4, 2, 'inverted', 16, 8, 1.0, 1.0, 0.1, 0.001, 8, 0.01, 5000]]
+  # 参数顺序: in_channels, num_experts, top_k, expert_type, router_reduction, router_pool_scale,
+  #           noise_std, router_temperature, balance_loss_coeff, router_z_loss_coeff,
+  #           num_groups, weight_threshold, progressive_warmup_steps
+
+  - [-1, 1, Conv, [1024, 3, 2]]        # 7-P5/32
+  # P5 层使用 UltraOptimizedMoE，但减少专家数、top_k=1
+  - [-1, 2, UltraOptimizedMoE, [1024, 3, 1, 'inverted', 16, 8, 1.0, 1.0, 0.1, 0.001, 8, 0.01, 5000]]
+  - [-1, 1, SPPF, [1024, 5, 3, True]]   # 9
+  - [-1, 2, C2PSA, [1024]]              # 10
+
+head:
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 6], 1, Concat, [1]]            # cat backbone P4 (索引6)
+  - [-1, 2, C3k2, [512, True]]           # 13
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]]
+  - [[-1, 4], 1, Concat, [1]]            # cat backbone P3 (索引4)
+  - [-1, 2, C3k2, [256, True]]           # 16
+
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [[-1, 13], 1, Concat, [1]]
+  - [-1, 2, C3k2, [512, True]]           # 19
+
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [[-1, 10], 1, Concat, [1]]
+  - [-1, 1, C3k2, [1024, True, 0.5, True]] # 22
+
+  - [[16, 19, 22], 1, Detect, [nc]]
