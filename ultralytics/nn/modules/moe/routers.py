@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Optional, Dict
+
 from .utils import FlopsUtils, get_safe_groups
 
 
@@ -9,18 +11,15 @@ from .utils import FlopsUtils, get_safe_groups
 # Ultra-lightweight Router (core optimization)
 # ==========================================
 class UltraEfficientRouter(nn.Module):
-    """
-    Ultra-efficient router:
-    1) Depthwise-separable convolution instead of standard conv
-    2) Aggressive downsampling (8x)
-    3) Early channel compression
-    4) Improved numerical stability
+    """Ultra-efficient router: 1) Depthwise-separable convolution instead of standard conv 2) Aggressive downsampling
+    (8x) 3) Early channel compression 4) Improved numerical stability.
 
     Expected FLOPs reduction: ~95% vs a local router baseline.
     """
 
-    def __init__(self, in_channels, num_experts, reduction=16, top_k=2,
-                 noise_std=1.0, temperature: float = 1.0, pool_scale=8):
+    def __init__(
+        self, in_channels, num_experts, reduction=16, top_k=2, noise_std=1.0, temperature: float = 1.0, pool_scale=8
+    ):
         super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
@@ -42,13 +41,16 @@ class UltraEfficientRouter(nn.Module):
             nn.GroupNorm(get_safe_groups(reduced_channels, 4), reduced_channels),
             nn.SiLU(inplace=True),
             # Expert projection
-            nn.Conv2d(reduced_channels, num_experts, 1, bias=True)
+            nn.Conv2d(reduced_channels, num_experts, 1, bias=True),
         )
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, x, top_k=None) -> Tuple[
-        torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        B, C, H, W = x.shape
+    def forward(
+        self, x, top_k=None
+    ) -> tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None
+    ]:
+        B, _C, H, W = x.shape
 
         # 1) Aggressive downsampling (core optimization)
         if H > self.pool_scale and W > self.pool_scale:
@@ -81,7 +83,6 @@ class UltraEfficientRouter(nn.Module):
         logits_clamped = logits.clamp(-30.0, 30.0)
         weights = F.softmax((logits_clamped / self.temperature).float(), dim=1).type_as(x)
         pooled_weights = weights.mean(dim=[2, 3], keepdim=True)
-
 
         # 关键：使用 top_k 变量
         topk_vals, topk_indices = torch.topk(pooled_weights, top_k, dim=1)
@@ -118,4 +119,3 @@ class UltraEfficientRouter(nn.Module):
         flops += FlopsUtils.count_conv2d(self.router[6], (B, self.router[3].out_channels, h_down, w_down))
 
         return flops
-
