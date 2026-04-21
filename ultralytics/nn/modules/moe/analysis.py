@@ -124,6 +124,13 @@ class ExpertUsageTracker:
         if idx_flat.size == 0:
             return
 
+        # 添加 nan 检查
+        if np.isnan(val_flat).any():
+            print(f"⚠️  WARNING: NaN detected in router weights for layer {name}")
+            print(f"   val_flat sample: {val_flat[:10]}")
+        if np.isinf(val_flat).any():
+            print(f"⚠️  WARNING: Inf detected in router weights for layer {name}")
+
         max_expert_id = int(idx_flat.max())
 
         # Compute hits and weights for all experts at once
