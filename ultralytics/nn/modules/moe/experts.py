@@ -1,6 +1,8 @@
+import math
+
 import torch
 import torch.nn as nn
-import math
+
 from .utils import FlopsUtils, get_safe_groups
 
 
@@ -18,7 +20,7 @@ class OptimizedSimpleExpert(nn.Module):
             nn.GroupNorm(get_safe_groups(hidden_dim, num_groups), hidden_dim),
             nn.SiLU(inplace=True),
             nn.Conv2d(hidden_dim, out_channels, 1, bias=False),
-            nn.GroupNorm(get_safe_groups(out_channels, num_groups), out_channels)
+            nn.GroupNorm(get_safe_groups(out_channels, num_groups), out_channels),
         )
         self.hidden_dim = hidden_dim
 
@@ -26,7 +28,7 @@ class OptimizedSimpleExpert(nn.Module):
         return self.conv(x)
 
     def compute_flops(self, input_shape):
-        B, C, H, W = input_shape
+        _B, C, H, W = input_shape
         flops = FlopsUtils.count_conv2d(self.conv[0], (1, C, H, W))
         flops += FlopsUtils.count_conv2d(self.conv[3], (1, self.hidden_dim, H, W))
         return flops
@@ -45,12 +47,12 @@ class FusedGhostExpert(nn.Module):
         self.primary_conv = nn.Sequential(
             nn.Conv2d(in_channels, init_channels, kernel_size, padding=kernel_size // 2, bias=False),
             nn.GroupNorm(min(num_groups, init_channels), init_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
         self.cheap_operation = nn.Sequential(
             nn.Conv2d(init_channels, new_channels, 3, padding=1, groups=init_channels, bias=False),
             nn.GroupNorm(min(num_groups, new_channels), new_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
         self.init_channels = init_channels
 
@@ -58,10 +60,10 @@ class FusedGhostExpert(nn.Module):
         x1 = self.primary_conv(x)
         x2 = self.cheap_operation(x1)
         out = torch.cat([x1, x2], dim=1)
-        return out[:, :self.out_channels, :, :]
+        return out[:, : self.out_channels, :, :]
 
     def compute_flops(self, input_shape):
-        B, C, H, W = input_shape
+        _B, C, H, W = input_shape
         flops = FlopsUtils.count_conv2d(self.primary_conv[0], (1, C, H, W))
         flops += FlopsUtils.count_conv2d(self.cheap_operation[0], (1, self.init_channels, H, W))
         return flops
@@ -76,12 +78,14 @@ class SimpleExpert(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.SiLU(inplace=True),
             nn.Conv2d(hidden_dim, out_channels, 1, bias=False),
-            nn.BatchNorm2d(out_channels)
+            nn.BatchNorm2d(out_channels),
         )
 
-    def forward(self, x): return self.conv(x)
+    def forward(self, x):
+        return self.conv(x)
 
-    def compute_flops(self, input_shape): return FlopsUtils.count_conv2d(self.conv, input_shape)
+    def compute_flops(self, input_shape):
+        return FlopsUtils.count_conv2d(self.conv, input_shape)
 
 
 class GhostExpert(nn.Module):
@@ -94,21 +98,21 @@ class GhostExpert(nn.Module):
         self.primary_conv = nn.Sequential(
             nn.Conv2d(in_channels, init_channels, kernel_size, padding=kernel_size // 2, bias=False),
             nn.BatchNorm2d(init_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
         self.cheap_operation = nn.Sequential(
             nn.Conv2d(init_channels, new_channels, 3, padding=1, groups=init_channels, bias=False),
             nn.BatchNorm2d(new_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
 
     def forward(self, x):
         x1 = self.primary_conv(x)
         x2 = self.cheap_operation(x1)
-        return torch.cat([x1, x2], dim=1)[:, :self.out_channels, :, :]
+        return torch.cat([x1, x2], dim=1)[:, : self.out_channels, :, :]
 
     def compute_flops(self, input_shape):
-        B, C, H, W = input_shape
+        B, _C, H, W = input_shape
         flops = FlopsUtils.count_conv2d(self.primary_conv, input_shape)
         # Compute input shape to cheap op (output of primary conv)
         p_out = self.primary_conv[0].out_channels
@@ -117,10 +121,10 @@ class GhostExpert(nn.Module):
 
 
 class InvertedResidualExpert(nn.Module):
+    """Highly efficient expert module: Uses Inverted Residual structure (MobileNetV2 style). 2-3x faster than standard
+    convolution experts, fewer parameters, stronger non-linearity.
     """
-    Highly efficient expert module: Uses Inverted Residual structure (MobileNetV2 style).
-    2-3x faster than standard convolution experts, fewer parameters, stronger non-linearity.
-    """
+
     def __init__(self, in_channels, out_channels, expand_ratio=2, kernel_size=3, groups=1):
         super().__init__()
         hidden_dim = int(in_channels * expand_ratio)
@@ -136,13 +140,12 @@ class InvertedResidualExpert(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.SiLU(inplace=True),
             # 2. Depthwise Spatial
-            nn.Conv2d(hidden_dim, hidden_dim, kernel_size, padding=kernel_size//2, 
-                      groups=hidden_dim, bias=False),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size, padding=kernel_size // 2, groups=hidden_dim, bias=False),
             nn.BatchNorm2d(hidden_dim),
             nn.SiLU(inplace=True),
             # 3. Pointwise Project
             nn.Conv2d(hidden_dim, out_channels, 1, bias=False, groups=groups),
-            nn.BatchNorm2d(out_channels)
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x):
@@ -158,10 +161,11 @@ class InvertedResidualExpert(nn.Module):
 
 class DepthwiseSeparableConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1):
-        super(DepthwiseSeparableConv, self).__init__()
+        super().__init__()
         padding = (kernel_size - 1) // 2
-        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size,
-                                   stride=stride, padding=padding, groups=in_channels, bias=False)
+        self.depthwise = nn.Conv2d(
+            in_channels, in_channels, kernel_size, stride=stride, padding=padding, groups=in_channels, bias=False
+        )
         self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
         self.act = nn.SiLU(inplace=True)
@@ -176,7 +180,7 @@ class DepthwiseSeparableConv(nn.Module):
 
 class EfficientExpertGroup(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1):
-        super(EfficientExpertGroup, self).__init__()
+        super().__init__()
         self.conv = DepthwiseSeparableConv(in_channels, out_channels, kernel_size, stride)
 
     def forward(self, x):
@@ -184,5 +188,3 @@ class EfficientExpertGroup(nn.Module):
             out_c = x.shape[1]
             self.conv = DepthwiseSeparableConv(x.shape[1], out_c, 3, 1)
         return self.conv(x)
-
-
