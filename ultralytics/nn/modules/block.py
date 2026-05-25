@@ -1973,10 +1973,10 @@ class SAVPE(nn.Module):
 
 ############
 
+
 class LSKA_Block(nn.Module):
-    """
-    Large Selective Kernel Attention Block.
-    Provides global context to features, helping downstream MoE routers make better decisions.
+    """Large Selective Kernel Attention Block. Provides global context to features, helping downstream MoE routers make
+    better decisions.
     """
 
     def __init__(self, dim, k_size=7):
@@ -1999,9 +1999,8 @@ class LSKA_Block(nn.Module):
 
 
 class C2f_LSKA(nn.Module):
-    """
-    Faster Implementation of CSP Bottleneck with 2 convolutions.
-    Replaces Bottleneck with LSKA_Block to synergize with MoE.
+    """Faster Implementation of CSP Bottleneck with 2 convolutions. Replaces Bottleneck with LSKA_Block to synergize
+    with MoE.
     """
 
     def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
@@ -2024,8 +2023,9 @@ class C2f_LSKA(nn.Module):
 
 #############################################
 
+
 class DynamicModulator(nn.Module):
-    """超轻量级特征调制器，用于 C3k2_Dynamic"""
+    """超轻量级特征调制器，用于 C3k2_Dynamic."""
 
     def __init__(self, c):
         super().__init__()
@@ -2035,7 +2035,7 @@ class DynamicModulator(nn.Module):
             nn.Conv2d(c, c // 4, 1, bias=False),
             nn.SiLU(inplace=True),
             nn.Conv2d(c // 4, c, 1, bias=False),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
@@ -2043,7 +2043,7 @@ class DynamicModulator(nn.Module):
 
 
 class DynamicBottleneck(nn.Module):
-    """具有动态调制能力的 Bottleneck"""
+    """具有动态调制能力的 Bottleneck."""
 
     def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):
         super().__init__()
@@ -2060,14 +2060,12 @@ class DynamicBottleneck(nn.Module):
 
 
 class C3k2_Dynamic(nn.Module):
-    """
-    优化后的 C3k2 模块。
-    通过 DynamicBottleneck 提供更强的特征提取能力，
-    尤其适合作为 MoE 模块的前置层或 Head 部分的增强。
+    """优化后的 C3k2 模块。 通过 DynamicBottleneck 提供更强的特征提取能力， 尤其适合作为 MoE 模块的前置层或 Head 部分的增强。.
     """
 
-    def __init__(self, c1: int, c2: int, n: int = 1, c3k: bool = False, e: float = 0.5, g: int = 1,
-                 shortcut: bool = True):
+    def __init__(
+        self, c1: int, c2: int, n: int = 1, c3k: bool = False, e: float = 0.5, g: int = 1, shortcut: bool = True
+    ):
         super().__init__()
         self.c = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, 2 * self.c, 1, 1)
@@ -2076,8 +2074,8 @@ class C3k2_Dynamic(nn.Module):
         # 使用 DynamicBottleneck 替换原有的 Bottleneck
         self.m = nn.ModuleList(
             nn.Sequential(*(DynamicBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0) for _ in range(2)))
-            if c3k else
-            DynamicBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=0.5)
+            if c3k
+            else DynamicBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=0.5)
             for _ in range(n)
         )
 
@@ -2094,19 +2092,20 @@ class C3k2_Dynamic(nn.Module):
 # 核心创新
 # 引入**离散小波变换(DWT)**实现无损下采样和频域特征增强,突破空域限制。
 
-class DWT2D(nn.Module):
-    """2D离散小波变换 - 无损分解到频域"""
 
-    def __init__(self, wavelet: str = 'haar'):
+class DWT2D(nn.Module):
+    """2D离散小波变换 - 无损分解到频域."""
+
+    def __init__(self, wavelet: str = "haar"):
         super().__init__()
         # Haar小波系数
-        self.register_buffer('ll', torch.tensor([[1, 1], [1, 1]], dtype=torch.float32) / 2)
-        self.register_buffer('lh', torch.tensor([[1, 1], [-1, -1]], dtype=torch.float32) / 2)
-        self.register_buffer('hl', torch.tensor([[1, -1], [1, -1]], dtype=torch.float32) / 2)
-        self.register_buffer('hh', torch.tensor([[1, -1], [-1, 1]], dtype=torch.float32) / 2)
+        self.register_buffer("ll", torch.tensor([[1, 1], [1, 1]], dtype=torch.float32) / 2)
+        self.register_buffer("lh", torch.tensor([[1, 1], [-1, -1]], dtype=torch.float32) / 2)
+        self.register_buffer("hl", torch.tensor([[1, -1], [1, -1]], dtype=torch.float32) / 2)
+        self.register_buffer("hh", torch.tensor([[1, -1], [-1, 1]], dtype=torch.float32) / 2)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        B, C, H, W = x.shape
+        _B, C, _H, _W = x.shape
 
         # 构建卷积核
         filters = torch.stack([self.ll, self.lh, self.hl, self.hh], dim=0)  # (4, 2, 2)
@@ -2121,19 +2120,18 @@ class DWT2D(nn.Module):
 
 
 class IDWT2D(nn.Module):
-    """2D逆离散小波变换"""
+    """2D逆离散小波变换."""
 
     def __init__(self):
         super().__init__()
         # 重建滤波器
-        self.register_buffer('ll', torch.tensor([[1, 1], [1, 1]], dtype=torch.float32) / 2)
-        self.register_buffer('lh', torch.tensor([[1, 1], [-1, -1]], dtype=torch.float32) / 2)
-        self.register_buffer('hl', torch.tensor([[1, -1], [1, -1]], dtype=torch.float32) / 2)
-        self.register_buffer('hh', torch.tensor([[1, -1], [-1, 1]], dtype=torch.float32) / 2)
+        self.register_buffer("ll", torch.tensor([[1, 1], [1, 1]], dtype=torch.float32) / 2)
+        self.register_buffer("lh", torch.tensor([[1, 1], [-1, -1]], dtype=torch.float32) / 2)
+        self.register_buffer("hl", torch.tensor([[1, -1], [1, -1]], dtype=torch.float32) / 2)
+        self.register_buffer("hh", torch.tensor([[1, -1], [-1, 1]], dtype=torch.float32) / 2)
 
-    def forward(self, ll: torch.Tensor, lh: torch.Tensor,
-                hl: torch.Tensor, hh: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = ll.shape
+    def forward(self, ll: torch.Tensor, lh: torch.Tensor, hl: torch.Tensor, hh: torch.Tensor) -> torch.Tensor:
+        _B, C, _H, _W = ll.shape
 
         # 合并子带
         x_concat = torch.cat([ll, lh, hl, hh], dim=1)  # (B, 4C, H, W)
@@ -2146,7 +2144,7 @@ class IDWT2D(nn.Module):
 
 
 class WaveAttnBlock(nn.Module):
-    """小波域注意力块 - 频域特征增强"""
+    """小波域注意力块 - 频域特征增强."""
 
     def __init__(self, dim: int, num_heads: int = 8, mlp_ratio: float = 2.0):
         super().__init__()
@@ -2160,29 +2158,24 @@ class WaveAttnBlock(nn.Module):
         self.ll_attn = nn.Sequential(
             Conv(dim, dim, 3, 1, 1),
             Attention(dim, num_heads),  # 复用原始Attention
-            Conv(dim, dim, 1, act=False)
+            Conv(dim, dim, 1, act=False),
         )
 
         # 高频分支 (细节纹理) - 轻量级处理
-        self.high_freq = nn.ModuleList([
-            nn.Sequential(
-                Conv(dim, dim // 4, 1),
-                DWConv(dim // 4, dim // 4, 3, 1),
-                Conv(dim // 4, dim, 1, act=False)
-            ) for _ in range(3)  # lh, hl, hh
-        ])
+        self.high_freq = nn.ModuleList(
+            [
+                nn.Sequential(
+                    Conv(dim, dim // 4, 1), DWConv(dim // 4, dim // 4, 3, 1), Conv(dim // 4, dim, 1, act=False)
+                )
+                for _ in range(3)  # lh, hl, hh
+            ]
+        )
 
         # 频域融合
-        self.fusion = nn.Sequential(
-            Conv(dim * 4, dim * 2, 1),
-            Conv(dim * 2, dim, 1, act=False)
-        )
+        self.fusion = nn.Sequential(Conv(dim * 4, dim * 2, 1), Conv(dim * 2, dim, 1, act=False))
 
         # FFN
-        self.mlp = nn.Sequential(
-            Conv(dim, int(dim * mlp_ratio), 1),
-            Conv(int(dim * mlp_ratio), dim, 1, act=False)
-        )
+        self.mlp = nn.Sequential(Conv(dim, int(dim * mlp_ratio), 1), Conv(int(dim * mlp_ratio), dim, 1, act=False))
 
         self.gamma1 = nn.Parameter(1e-4 * torch.ones(dim))
         self.gamma2 = nn.Parameter(1e-4 * torch.ones(dim))
@@ -2202,16 +2195,16 @@ class WaveAttnBlock(nn.Module):
         freq_features = torch.cat([ll_out, lh_out, hl_out, hh_out], dim=1)
         fused = self.fusion(freq_features)
         recon = self.idwt(ll_out, lh_out, hl_out, hh_out)
-        fused = F.interpolate(fused, size=recon.shape[2:], mode='bilinear')
+        fused = F.interpolate(fused, size=recon.shape[2:], mode="bilinear")
         out = fused + recon
-        x = x + self.gamma1.view(1, -1, 1, 1) * F.interpolate(out, size=x.shape[2:], mode='bilinear')
+        x = x + self.gamma1.view(1, -1, 1, 1) * F.interpolate(out, size=x.shape[2:], mode="bilinear")
         x = x + self.gamma2.view(1, -1, 1, 1) * self.mlp(x)
 
         return x
 
 
 class WaveC2f(nn.Module):
-    """小波变换增强C2f - 频域+空域联合建模"""
+    """小波变换增强C2f - 频域+空域联合建模."""
 
     def __init__(self, c1: int, c2: int, n: int = 1, mlp_ratio: float = 2.0, e: float = 0.5):
         super().__init__()
@@ -2222,9 +2215,7 @@ class WaveC2f(nn.Module):
         self.cv2 = Conv((1 + n) * c_, c2, 1)
 
         # 堆叠小波注意力块
-        self.m = nn.ModuleList(
-            WaveAttnBlock(c_, c_ // 32, mlp_ratio) for _ in range(n)
-        )
+        self.m = nn.ModuleList(WaveAttnBlock(c_, c_ // 32, mlp_ratio) for _ in range(n))
 
         self.gamma = nn.Parameter(0.01 * torch.ones(c2), requires_grad=True)
 
@@ -2237,7 +2228,7 @@ class WaveC2f(nn.Module):
 
 ###############################################
 class DynamicExpert(nn.Module):
-    """动态专家网络 - 每个专家专注不同特征模式"""
+    """动态专家网络 - 每个专家专注不同特征模式."""
 
     def __init__(self, dim: int, expert_type: str = "spatial"):
         super().__init__()
@@ -2245,30 +2236,18 @@ class DynamicExpert(nn.Module):
 
         if expert_type == "spatial":
             # 空间专家: 大感受野
-            self.net = nn.Sequential(
-                Conv(dim, dim, 7, 1, 3, g=dim),
-                Conv(dim, dim, 1)
-            )
+            self.net = nn.Sequential(Conv(dim, dim, 7, 1, 3, g=dim), Conv(dim, dim, 1))
         elif expert_type == "channel":
             # 通道专家: SE注意力
             self.net = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                Conv(dim, dim // 4, 1),
-                Conv(dim // 4, dim, 1, act=False),
-                nn.Sigmoid()
+                nn.AdaptiveAvgPool2d(1), Conv(dim, dim // 4, 1), Conv(dim // 4, dim, 1, act=False), nn.Sigmoid()
             )
         elif expert_type == "detail":
             # 细节专家: 小卷积核
-            self.net = nn.Sequential(
-                Conv(dim, dim, 3, 1, 1),
-                Conv(dim, dim, 3, 1, 1)
-            )
+            self.net = nn.Sequential(Conv(dim, dim, 3, 1, 1), Conv(dim, dim, 3, 1, 1))
         else:  # texture
             # 纹理专家: 深度可分离
-            self.net = nn.Sequential(
-                DWConv(dim, dim, 5, 1),
-                Conv(dim, dim, 1)
-            )
+            self.net = nn.Sequential(DWConv(dim, dim, 5, 1), Conv(dim, dim, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.expert_type == "channel":
@@ -2277,7 +2256,7 @@ class DynamicExpert(nn.Module):
 
 
 class MoEGate(nn.Module):
-    """门控网络 - 动态选择专家"""
+    """门控网络 - 动态选择专家."""
 
     def __init__(self, dim: int, num_experts: int = 4, top_k: int = 2):
         super().__init__()
@@ -2285,17 +2264,13 @@ class MoEGate(nn.Module):
         self.top_k = top_k
 
         # 轻量级门控
-        self.gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Linear(dim, num_experts)
-        )
+        self.gate = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(dim, num_experts))
 
         # 负载平衡损失权重
         self.balance_loss_weight = 0.01
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        B = x.shape[0]
+        x.shape[0]
 
         # 计算门控分数
         scores = self.gate(x)  # (B, num_experts)
@@ -2307,14 +2282,14 @@ class MoEGate(nn.Module):
         # 负载平衡损失 (训练时使用)
         if self.training:
             expert_usage = F.one_hot(top_k_indices, self.num_experts).float().sum(0)
-            load_balance_loss = expert_usage.var()
+            expert_usage.var()
             # 可在外部累加到总损失
 
         return top_k_scores, top_k_indices
 
 
 class DyMoEBlock(nn.Module):
-    """动态专家混合块"""
+    """动态专家混合块."""
 
     def __init__(self, dim: int, num_experts: int = 4, top_k: int = 2, mlp_ratio: float = 2.0):
         super().__init__()
@@ -2323,18 +2298,13 @@ class DyMoEBlock(nn.Module):
 
         # 创建多个专家
         expert_types = ["spatial", "channel", "detail", "texture"]
-        self.experts = nn.ModuleList([
-            DynamicExpert(dim, expert_types[i % 4]) for i in range(num_experts)
-        ])
+        self.experts = nn.ModuleList([DynamicExpert(dim, expert_types[i % 4]) for i in range(num_experts)])
 
         # 门控网络
         self.gate = MoEGate(dim, num_experts, top_k)
 
         # FFN
-        self.mlp = nn.Sequential(
-            Conv(dim, int(dim * mlp_ratio), 1),
-            Conv(int(dim * mlp_ratio), dim, 1, act=False)
-        )
+        self.mlp = nn.Sequential(Conv(dim, int(dim * mlp_ratio), 1), Conv(int(dim * mlp_ratio), dim, 1, act=False))
 
         self.gamma1 = nn.Parameter(1e-4 * torch.ones(dim))
         self.gamma2 = nn.Parameter(1e-4 * torch.ones(dim))
@@ -2350,8 +2320,7 @@ class DyMoEBlock(nn.Module):
 
         # 加权聚合
         selected_experts = torch.gather(
-            expert_outputs, 1,
-            top_k_indices.view(B, self.top_k, 1, 1, 1).expand(-1, -1, C, H, W)
+            expert_outputs, 1, top_k_indices.view(B, self.top_k, 1, 1, 1).expand(-1, -1, C, H, W)
         )  # (B, top_k, C, H, W)
 
         moe_output = (selected_experts * top_k_scores.view(B, self.top_k, 1, 1, 1)).sum(dim=1)
@@ -2364,19 +2333,16 @@ class DyMoEBlock(nn.Module):
 
 
 class DyC2f(nn.Module):
-    """动态专家混合C2f - 自适应计算分配"""
+    """动态专家混合C2f - 自适应计算分配."""
 
-    def __init__(self, c1: int, c2: int, n: int = 1, num_experts: int = 4,
-                 top_k: int = 2, e: float = 0.5):
+    def __init__(self, c1: int, c2: int, n: int = 1, num_experts: int = 4, top_k: int = 2, e: float = 0.5):
         super().__init__()
         c_ = int(c2 * e)
 
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv((1 + n) * c_, c2, 1)
 
-        self.m = nn.ModuleList(
-            DyMoEBlock(c_, num_experts, top_k) for _ in range(n)
-        )
+        self.m = nn.ModuleList(DyMoEBlock(c_, num_experts, top_k) for _ in range(n))
 
         self.gamma = nn.Parameter(0.01 * torch.ones(c2), requires_grad=True)
 
@@ -2389,8 +2355,9 @@ class DyC2f(nn.Module):
 
 ##################################
 
+
 class TripleAttn(nn.Module):
-    """三维自适应注意力: 空间+通道+尺度联合优化"""
+    """三维自适应注意力: 空间+通道+尺度联合优化."""
 
     def __init__(self, dim: int, num_heads: int, area: int = 1, scales: list[int] = [1, 2, 4]):
         super().__init__()
@@ -2404,27 +2371,27 @@ class TripleAttn(nn.Module):
 
         # 通道注意力分支 (SE变体)
         self.channel_attn = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            Conv(dim, dim // 4, 1),
-            Conv(dim // 4, dim, 1, act=False),
-            nn.Sigmoid()
+            nn.AdaptiveAvgPool2d(1), Conv(dim, dim // 4, 1), Conv(dim // 4, dim, 1, act=False), nn.Sigmoid()
         )
 
         # 多尺度注意力分支
-        self.scale_convs = nn.ModuleList([
-            nn.Sequential(
-                nn.AvgPool2d(s) if s > 1 else nn.Identity(),
-                Conv(dim, dim, 3, 1, 1, g=dim),
-                nn.Upsample(scale_factor=s) if s > 1 else nn.Identity()
-            ) for s in scales
-        ])
+        self.scale_convs = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.AvgPool2d(s) if s > 1 else nn.Identity(),
+                    Conv(dim, dim, 3, 1, 1, g=dim),
+                    nn.Upsample(scale_factor=s) if s > 1 else nn.Identity(),
+                )
+                for s in scales
+            ]
+        )
 
         # 融合权重 (动态学习三个分支的重要性)
         self.fusion_weights = nn.Parameter(torch.ones(3) / 3)
         self.proj = Conv(dim, dim, 1, act=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
+        _B, _C, H, W = x.shape
 
         # 三个注意力分支
         spatial_out = self.spatial_attn(x)  # 空间关系
@@ -2432,7 +2399,7 @@ class TripleAttn(nn.Module):
 
         # 多尺度融合
         scale_outs = [conv(x) for conv in self.scale_convs]
-        scale_outs = [F.interpolate(t, size=(H, W), mode='bilinear', align_corners=False) for t in scale_outs]
+        scale_outs = [F.interpolate(t, size=(H, W), mode="bilinear", align_corners=False) for t in scale_outs]
         scale_out = sum(scale_outs) / len(scale_outs)
 
         # 动态加权融合
@@ -2443,10 +2410,9 @@ class TripleAttn(nn.Module):
 
 
 class A3Block(nn.Module):
-    """增强型ABlock with 三维注意力"""
+    """增强型ABlock with 三维注意力."""
 
-    def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 1.2,
-                 area: int = 1, scales: list[int] = [1, 2, 4]):
+    def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 1.2, area: int = 1, scales: list[int] = [1, 2, 4]):
         super().__init__()
         self.attn = TripleAttn(dim, num_heads, area, scales)
 
@@ -2456,7 +2422,7 @@ class A3Block(nn.Module):
             Conv(dim, mlp_hidden_dim * 2, 1),
             nn.SiLU(),
             Conv(mlp_hidden_dim * 2, mlp_hidden_dim, 1, g=mlp_hidden_dim),
-            Conv(mlp_hidden_dim, dim, 1, act=False)
+            Conv(mlp_hidden_dim, dim, 1, act=False),
         )
 
         # 层自适应 (LayerScale)
@@ -2470,10 +2436,18 @@ class A3Block(nn.Module):
 
 
 class A3C2f(nn.Module):
-    """三维自适应注意力C2f - 超越A2C2f的全维度建模"""
+    """三维自适应注意力C2f - 超越A2C2f的全维度建模."""
 
-    def __init__(self, c1: int, c2: int, n: int = 1, area: int = 1,
-                 scales: list[int] = [1, 2, 4], mlp_ratio: float = 2.0, e: float = 0.5):
+    def __init__(
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        area: int = 1,
+        scales: list[int] = [1, 2, 4],
+        mlp_ratio: float = 2.0,
+        e: float = 0.5,
+    ):
         super().__init__()
         c_ = int(c2 * e)
         assert c_ % 32 == 0, "Hidden channels must be divisible by 32"
@@ -2482,9 +2456,7 @@ class A3C2f(nn.Module):
         self.cv2 = Conv((1 + n) * c_, c2, 1)
 
         # 堆叠A3Block
-        self.m = nn.ModuleList(
-            A3Block(c_, c_ // 32, mlp_ratio, area, scales) for _ in range(n)
-        )
+        self.m = nn.ModuleList(A3Block(c_, c_ // 32, mlp_ratio, area, scales) for _ in range(n))
 
         # 全局残差缩放
         self.gamma = nn.Parameter(0.01 * torch.ones(c2), requires_grad=True)
@@ -2502,7 +2474,7 @@ class A3C2f(nn.Module):
 
 
 class LightweightChannelAttention(nn.Module):
-    """轻量级通道注意力模块 - 比SE/ECA更高效"""
+    """轻量级通道注意力模块 - 比SE/ECA更高效."""
 
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
@@ -2512,7 +2484,7 @@ class LightweightChannelAttention(nn.Module):
         self.fc = nn.Sequential(
             nn.Conv2d(channels, mid_channels, 1, bias=False),
             nn.SiLU(),
-            nn.Conv2d(mid_channels, channels, 1, bias=False)
+            nn.Conv2d(mid_channels, channels, 1, bias=False),
         )
         self.sigmoid = nn.Sigmoid()
 
@@ -2523,7 +2495,7 @@ class LightweightChannelAttention(nn.Module):
 
 
 class LightweightSpatialAttention(nn.Module):
-    """轻量级空间注意力模块"""
+    """轻量级空间注意力模块."""
 
     def __init__(self, kernel_size: int = 7):
         super().__init__()
@@ -2538,7 +2510,7 @@ class LightweightSpatialAttention(nn.Module):
 
 
 class DualAttention(nn.Module):
-    """双重注意力模块 - 同时进行通道和空间注意力"""
+    """双重注意力模块 - 同时进行通道和空间注意力."""
 
     def __init__(self, channels: int, reduction: int = 8):
         super().__init__()
@@ -2552,14 +2524,12 @@ class DualAttention(nn.Module):
 
 
 class MultiScaleConv(nn.Module):
-    """多尺度卷积模块 - 并行提取不同感受野特征"""
+    """多尺度卷积模块 - 并行提取不同感受野特征."""
 
     def __init__(self, c1: int, c2: int, k: tuple = (3, 5, 7), g: int = 1):
         super().__init__()
         self.c = c2 // len(k)
-        self.convs = nn.ModuleList([
-            Conv(c1, self.c, ki, 1, ki // 2, g=g) for ki in k
-        ])
+        self.convs = nn.ModuleList([Conv(c1, self.c, ki, 1, ki // 2, g=g) for ki in k])
         self.fusion = Conv(self.c * len(k), c2, 1, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -2567,17 +2537,17 @@ class MultiScaleConv(nn.Module):
 
 
 class EnhancedBottleneck(nn.Module):
-    """增强型Bottleneck - 集成多尺度特征和注意力机制"""
+    """增强型Bottleneck - 集成多尺度特征和注意力机制."""
 
     def __init__(
-            self,
-            c1: int,
-            c2: int,
-            shortcut: bool = True,
-            g: int = 1,
-            k: tuple = (3, 5),
-            e: float = 0.5,
-            use_attention: bool = True
+        self,
+        c1: int,
+        c2: int,
+        shortcut: bool = True,
+        g: int = 1,
+        k: tuple = (3, 5),
+        e: float = 0.5,
+        use_attention: bool = True,
     ):
         super().__init__()
         c_ = int(c2 * e)
@@ -2603,7 +2573,7 @@ class EnhancedBottleneck(nn.Module):
 
 
 class AdaptiveFeatureFusion(nn.Module):
-    """自适应特征融合 - 动态学习不同层级特征的权重"""
+    """自适应特征融合 - 动态学习不同层级特征的权重."""
 
     def __init__(self, in_channels: int, num_inputs: int):
         super().__init__()
@@ -2614,7 +2584,7 @@ class AdaptiveFeatureFusion(nn.Module):
         self.fusion_conv = Conv(in_channels, in_channels, 1, 1)
 
     def forward(self, inputs: list[torch.Tensor]) -> torch.Tensor:
-        """inputs: list of tensors to fuse"""
+        """Inputs: list of tensors to fuse."""
         # 归一化权重
         weights = self.relu(self.weights)
         weights = weights / (torch.sum(weights) + 1e-6)
@@ -2625,8 +2595,7 @@ class AdaptiveFeatureFusion(nn.Module):
 
 
 class C3k2Ultra(nn.Module):
-    """
-    C3k2Ultra - 超越C3k2的高性能Block模块
+    """C3k2Ultra - 超越C3k2的高性能Block模块.
 
     核心创新点：
     1. 增强型Bottleneck：集成多尺度卷积和双重注意力
@@ -2642,15 +2611,15 @@ class C3k2Ultra(nn.Module):
     """
 
     def __init__(
-            self,
-            c1: int,
-            c2: int,
-            n: int = 1,
-            shortcut: bool = True,
-            g: int = 1,
-            e: float = 0.5,
-            use_attention: bool = True,
-            adaptive_fusion: bool = True
+        self,
+        c1: int,
+        c2: int,
+        n: int = 1,
+        shortcut: bool = True,
+        g: int = 1,
+        e: float = 0.5,
+        use_attention: bool = True,
+        adaptive_fusion: bool = True,
     ):
         """
         Args:
@@ -2661,7 +2630,7 @@ class C3k2Ultra(nn.Module):
             g (int): 分组卷积的组数
             e (float): 通道扩张率
             use_attention (bool): 是否使用注意力机制
-            adaptive_fusion (bool): 是否使用自适应特征融合
+            adaptive_fusion (bool): 是否使用自适应特征融合.
         """
         super().__init__()
         self.c = int(c2 * e)  # hidden channels
@@ -2671,15 +2640,7 @@ class C3k2Ultra(nn.Module):
 
         # 渐进式特征提取模块
         self.m = nn.ModuleList(
-            EnhancedBottleneck(
-                self.c,
-                self.c,
-                shortcut,
-                g,
-                k=(3, 5),
-                e=1.0,
-                use_attention=use_attention
-            )
+            EnhancedBottleneck(self.c, self.c, shortcut, g, k=(3, 5), e=1.0, use_attention=use_attention)
             for _ in range(n)
         )
 
@@ -2692,7 +2653,7 @@ class C3k2Ultra(nn.Module):
         self.cv2 = Conv((2 + n) * self.c, c2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播"""
+        """前向传播."""
         # 特征分离
         y = list(self.cv1(x).chunk(2, 1))
 
@@ -2708,7 +2669,7 @@ class C3k2Ultra(nn.Module):
                     enhanced_features.append(y[i])
                 else:
                     # 后续层结合之前的信息
-                    fused = self.aff(y[:i + 1])
+                    fused = self.aff(y[: i + 1])
                     enhanced_features.append(fused)
 
             # 使用增强后的特征
@@ -2718,7 +2679,7 @@ class C3k2Ultra(nn.Module):
             return self.cv2(torch.cat(y, 1))
 
     def forward_split(self, x: torch.Tensor) -> torch.Tensor:
-        """使用split()代替chunk()的前向传播"""
+        """使用split()代替chunk()的前向传播."""
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y.extend(m(y[-1]) for m in self.m)
 
@@ -2728,7 +2689,7 @@ class C3k2Ultra(nn.Module):
                 if i == 0:
                     enhanced_features.append(y[i])
                 else:
-                    fused = self.aff(y[:i + 1])
+                    fused = self.aff(y[: i + 1])
                     enhanced_features.append(fused)
             return self.cv2(torch.cat(enhanced_features, 1))
         else:
@@ -2736,8 +2697,7 @@ class C3k2Ultra(nn.Module):
 
 
 class C3k2UltraLite(C3k2Ultra):
-    """
-    C3k2Ultra的轻量化版本 - 适用于资源受限场景
+    """C3k2Ultra的轻量化版本 - 适用于资源受限场景.
 
     相比完整版的简化：
     1. 不使用自适应特征融合
@@ -2745,25 +2705,21 @@ class C3k2UltraLite(C3k2Ultra):
     3. 简化多尺度卷积
     """
 
-    def __init__(
-            self,
-            c1: int,
-            c2: int,
-            n: int = 1,
-            shortcut: bool = True,
-            g: int = 1,
-            e: float = 0.5
-    ):
+    def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = True, g: int = 1, e: float = 0.5):
         super().__init__(
-            c1, c2, n, shortcut, g, e,
+            c1,
+            c2,
+            n,
+            shortcut,
+            g,
+            e,
             use_attention=False,  # 关闭注意力
-            adaptive_fusion=False  # 关闭自适应融合
+            adaptive_fusion=False,  # 关闭自适应融合
         )
 
 
 class C3k2UltraPro(nn.Module):
-    """
-    C3k2Ultra的增强版本 - 追求极致性能
+    """C3k2Ultra的增强版本 - 追求极致性能.
 
     额外增强：
     1. 引入空间金字塔池化
@@ -2772,14 +2728,7 @@ class C3k2UltraPro(nn.Module):
     """
 
     def __init__(
-            self,
-            c1: int,
-            c2: int,
-            n: int = 2,
-            shortcut: bool = True,
-            g: int = 1,
-            e: float = 0.5,
-            k: tuple = (5, 9, 13)
+        self, c1: int, c2: int, n: int = 2, shortcut: bool = True, g: int = 1, e: float = 0.5, k: tuple = (5, 9, 13)
     ):
         super().__init__()
         self.c = int(c2 * e)
@@ -2789,15 +2738,11 @@ class C3k2UltraPro(nn.Module):
 
         # 增强型特征提取
         self.m = nn.ModuleList(
-            EnhancedBottleneck(self.c, self.c, shortcut, g, k=(3, 5, 7), e=1.0, use_attention=True)
-            for _ in range(n)
+            EnhancedBottleneck(self.c, self.c, shortcut, g, k=(3, 5, 7), e=1.0, use_attention=True) for _ in range(n)
         )
 
         # 空间金字塔池化（SPP）- 增强多尺度信息
-        self.spp = nn.ModuleList([
-            nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2)
-            for x in k
-        ])
+        self.spp = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
 
         # 自适应特征融合
         self.aff = AdaptiveFeatureFusion(self.c, n + 2 + len(k))
@@ -2809,7 +2754,7 @@ class C3k2UltraPro(nn.Module):
         self.cv2 = Conv(self.c * (n + 2 + len(k)), c2, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播 - 增强版"""
+        """前向传播 - 增强版."""
         # 特征分离
         y = list(self.cv1(x).chunk(2, 1))
 
@@ -2830,11 +2775,12 @@ class C3k2UltraPro(nn.Module):
 
 ######################################
 
+
 class FrequencyEnhance(nn.Module):
-    """频域特征增强模块 - 通过DCT变换提取频域特征"""
+    """频域特征增强模块 - 通过DCT变换提取频域特征."""
 
     def __init__(self, c: int, reduction: int = 4):
-        """初始化频域增强模块
+        """初始化频域增强模块.
 
         Args:
             c (int): 输入通道数
@@ -2843,17 +2789,13 @@ class FrequencyEnhance(nn.Module):
         super().__init__()
         self.c_ = c // reduction
         self.freq_conv = nn.Sequential(
-            nn.Conv2d(c, self.c_, 1),
-            nn.BatchNorm2d(self.c_),
-            nn.SiLU(),
-            nn.Conv2d(self.c_, c, 1),
-            nn.Sigmoid()
+            nn.Conv2d(c, self.c_, 1), nn.BatchNorm2d(self.c_), nn.SiLU(), nn.Conv2d(self.c_, c, 1), nn.Sigmoid()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播：提取频域特征并增强原始特征"""
+        """前向传播：提取频域特征并增强原始特征."""
         # 简化的频域处理：通过全局平均和最大池化模拟
-        freq_feat = torch.fft.rfft2(x, norm='ortho')
+        freq_feat = torch.fft.rfft2(x, norm="ortho")
         freq_amp = torch.abs(freq_feat)
         freq_amp = torch.nn.functional.adaptive_avg_pool2d(freq_amp, 1)
 
@@ -2863,51 +2805,49 @@ class FrequencyEnhance(nn.Module):
 
 
 class MultiScaleReceptiveField(nn.Module):
-    """多尺度自适应感受野模块 - 类似ASPP但更轻量"""
+    """多尺度自适应感受野模块 - 类似ASPP但更轻量."""
 
     def __init__(self, c: int, dilations: tuple[int, ...] = (1, 2, 3)):
-        """初始化多尺度感受野模块
+        """初始化多尺度感受野模块.
 
         Args:
             c (int): 输入输出通道数
             dilations (tuple): 膨胀率列表
         """
         super().__init__()
-        self.branches = nn.ModuleList([
-            nn.Sequential(
-                nn.Conv2d(c, c, 3, padding=d, dilation=d, groups=c, bias=False),
-                nn.BatchNorm2d(c),
-                nn.SiLU()
-            ) for d in dilations
-        ])
+        self.branches = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(c, c, 3, padding=d, dilation=d, groups=c, bias=False), nn.BatchNorm2d(c), nn.SiLU()
+                )
+                for d in dilations
+            ]
+        )
         self.fusion = Conv(c * len(dilations), c, 1)
         self.gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(c * len(dilations), len(dilations), 1),
-            nn.Softmax(dim=1)
+            nn.AdaptiveAvgPool2d(1), nn.Conv2d(c * len(dilations), len(dilations), 1), nn.Softmax(dim=1)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播：多尺度特征提取与自适应融合"""
+        """前向传播：多尺度特征提取与自适应融合."""
         # 多分支特征提取
         branch_outs = [branch(x) for branch in self.branches]
         concat_feat = torch.cat(branch_outs, dim=1)
 
         # 自适应门控加权
         weights = self.gate(concat_feat)
-        weighted_feat = torch.cat([
-            branch_outs[i] * weights[:, i:i + 1, :, :]
-            for i in range(len(self.branches))
-        ], dim=1)
+        weighted_feat = torch.cat(
+            [branch_outs[i] * weights[:, i : i + 1, :, :] for i in range(len(self.branches))], dim=1
+        )
 
         return self.fusion(weighted_feat)
 
 
 class LightweightDualPathAttention(nn.Module):
-    """轻量级双路径注意力 - 同时处理通道和空间注意力"""
+    """轻量级双路径注意力 - 同时处理通道和空间注意力."""
 
     def __init__(self, c: int, reduction: int = 8, kernel_size: int = 7):
-        """初始化双路径注意力模块
+        """初始化双路径注意力模块.
 
         Args:
             c (int): 输入通道数
@@ -2921,17 +2861,14 @@ class LightweightDualPathAttention(nn.Module):
             nn.Conv2d(c, c // reduction, 1),
             nn.SiLU(),
             nn.Conv2d(c // reduction, c, 1),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
         # 空间注意力路径
-        self.spatial_attn = nn.Sequential(
-            nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2),
-            nn.Sigmoid()
-        )
+        self.spatial_attn = nn.Sequential(nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2), nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播：双路径注意力增强"""
+        """前向传播：双路径注意力增强."""
         # 通道注意力
         channel_weight = self.channel_attn(x)
         x_channel = x * channel_weight
@@ -2946,18 +2883,12 @@ class LightweightDualPathAttention(nn.Module):
 
 
 class AdaptiveBottleneck(nn.Module):
-    """增强版Bottleneck - 集成多尺度感受野和注意力机制"""
+    """增强版Bottleneck - 集成多尺度感受野和注意力机制."""
 
     def __init__(
-            self,
-            c1: int,
-            c2: int,
-            shortcut: bool = True,
-            g: int = 1,
-            k: tuple[int, int] = (3, 3),
-            e: float = 0.5
+        self, c1: int, c2: int, shortcut: bool = True, g: int = 1, k: tuple[int, int] = (3, 3), e: float = 0.5
     ):
-        """初始化自适应Bottleneck
+        """初始化自适应Bottleneck.
 
         Args:
             c1 (int): 输入通道数
@@ -2988,7 +2919,7 @@ class AdaptiveBottleneck(nn.Module):
         self.add = shortcut and c1 == c2
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播：多模块增强的Bottleneck"""
+        """前向传播：多模块增强的Bottleneck."""
         identity = x
 
         # 基础卷积流
@@ -3007,7 +2938,7 @@ class AdaptiveBottleneck(nn.Module):
 
 
 class C3k2MA(nn.Module):
-    """C3k2 Multi-scale Adaptive - 增强版C3k2，集成多项创新技术
+    """C3k2 Multi-scale Adaptive - 增强版C3k2，集成多项创新技术.
 
     核心改进：
     1. 使用AdaptiveBottleneck替代标准Bottleneck
@@ -3016,16 +2947,8 @@ class C3k2MA(nn.Module):
     4. 支持动态深度调整
     """
 
-    def __init__(
-            self,
-            c1: int,
-            c2: int,
-            n: int = 1,
-            shortcut: bool = False,
-            g: int = 1,
-            e: float = 0.5
-    ):
-        """初始化C3k2MA模块
+    def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = False, g: int = 1, e: float = 0.5):
+        """初始化C3k2MA模块.
 
         Args:
             c1 (int): 输入通道数
@@ -3045,10 +2968,7 @@ class C3k2MA(nn.Module):
         self.cv2 = Conv((2 + n) * self.c, c2, 1)
 
         # 多个AdaptiveBottleneck堆叠
-        self.m = nn.ModuleList(
-            AdaptiveBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0)
-            for _ in range(n)
-        )
+        self.m = nn.ModuleList(AdaptiveBottleneck(self.c, self.c, shortcut, g, k=(3, 3), e=1.0) for _ in range(n))
 
         # 特征重标定门控（Feature Recalibration Gate）
         self.frg = nn.Sequential(
@@ -3056,11 +2976,11 @@ class C3k2MA(nn.Module):
             nn.Conv2d((2 + n) * self.c, (2 + n) * self.c // 4, 1),
             nn.SiLU(),
             nn.Conv2d((2 + n) * self.c // 4, (2 + n) * self.c, 1),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播：增强的CSP架构"""
+        """前向传播：增强的CSP架构."""
         # 初始特征分割
         y = list(self.cv1(x).chunk(2, 1))
 
@@ -3078,7 +2998,7 @@ class C3k2MA(nn.Module):
         return self.cv2(gated_feat)
 
     def forward_split(self, x: torch.Tensor) -> torch.Tensor:
-        """使用split()代替chunk()的前向传播"""
+        """使用split()代替chunk()的前向传播."""
         y = self.cv1(x).split((self.c, self.c), 1)
         y = [y[0], y[1]]
         y.extend(m(y[-1]) for m in self.m)
@@ -3092,21 +3012,13 @@ class C3k2MA(nn.Module):
 
 # ============== 轻量级变体 ==============
 class C3k2MA_Lite(C3k2):
-    """C3k2MA的轻量级版本 - 减少计算量但保留核心创新
+    """C3k2MA的轻量级版本 - 减少计算量但保留核心创新.
 
     适用场景：资源受限的边缘设备或实时性要求极高的场景
     """
 
-    def __init__(
-            self,
-            c1: int,
-            c2: int,
-            n: int = 1,
-            shortcut: bool = False,
-            g: int = 1,
-            e: float = 0.5
-    ):
-        """初始化轻量级C3k2MA"""
+    def __init__(self, c1: int, c2: int, n: int = 1, shortcut: bool = False, g: int = 1, e: float = 0.5):
+        """初始化轻量级C3k2MA."""
         super().__init__(c1, c2, n, False, e, g, shortcut)
 
         # 仅在最后一个bottleneck后添加轻量级注意力
@@ -3114,13 +3026,11 @@ class C3k2MA_Lite(C3k2):
 
         # 简化的门控机制
         self.simple_gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d((2 + n) * self.c, (2 + n) * self.c, 1),
-            nn.Sigmoid()
+            nn.AdaptiveAvgPool2d(1), nn.Conv2d((2 + n) * self.c, (2 + n) * self.c, 1), nn.Sigmoid()
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """轻量级前向传播"""
+        """轻量级前向传播."""
         y = list(self.cv1(x).chunk(2, 1))
         y.extend(m(y[-1]) for m in self.m)
 
