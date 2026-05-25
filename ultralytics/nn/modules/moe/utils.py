@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
-from typing import Tuple, Union, List
 
 
 def get_safe_groups(channels: int, desired_groups: int = 8) -> int:
-    """Ensure num_groups divides channels"""
+    """Ensure num_groups divides channels."""
     groups = min(desired_groups, channels)
     while channels % groups != 0:
         groups -= 1
@@ -16,8 +17,8 @@ def get_safe_groups(channels: int, desired_groups: int = 8) -> int:
 # ==========================================
 class FlopsUtils:
     @staticmethod
-    def count_conv2d(layer: Union[nn.Conv2d, nn.Sequential], input_shape: Tuple[int, int, int, int]) -> float:
-        B, C, H, W = input_shape
+    def count_conv2d(layer: nn.Conv2d | nn.Sequential, input_shape: tuple[int, int, int, int]) -> float:
+        B, _C, H, W = input_shape
         if isinstance(layer, nn.Sequential):
             total = 0
             curr_shape = input_shape
@@ -42,43 +43,39 @@ class FlopsUtils:
 # Batched expert computation (key optimization)
 # ==========================================
 class BatchedExpertComputation:
-    """
-    Strategy: batch expert computations to eliminate for-loops.
-    Performance: ~3–5x inference speedup observed.
+    """Strategy: batch expert computations to eliminate for-loops. Performance: ~3–5x inference speedup observed.
     """
 
     @staticmethod
     def compute_sparse_experts_batched(
-            x: torch.Tensor,
-            experts: nn.ModuleList,
-            routing_weights: torch.Tensor,
-            routing_indices: torch.Tensor,
-            top_k: int,
-            num_experts: int
+        x: torch.Tensor,
+        experts: nn.ModuleList,
+        routing_weights: torch.Tensor,
+        routing_indices: torch.Tensor,
+        top_k: int,
+        num_experts: int,
     ) -> torch.Tensor:
+        """Batched expert computation: 1) Pre-allocate outputs for all experts 2) Compute all activated experts in
+        parallel 3) Aggregate using efficient scatter/index_add.
         """
-        Batched expert computation:
-        1) Pre-allocate outputs for all experts
-        2) Compute all activated experts in parallel
-        3) Aggregate using efficient scatter/index_add
-        """
-        B, C, H, W = x.shape
+        B, _C, H, W = x.shape
         # print(f"[BatchedExpert] Input: B={B}, C={C}, H={H}, W={W}, top_k={top_k}, num_experts={num_experts}")
-        out_channels = experts[0].conv[-2].out_channels if hasattr(experts[0], 'conv') else experts[0].primary_conv[
-            0].out_channels
+        out_channels = (
+            experts[0].conv[-2].out_channels if hasattr(experts[0], "conv") else experts[0].primary_conv[0].out_channels
+        )
 
         # Flatten indices and weights
         # Handle cases where top_k might have changed dynamically
         current_top_k = routing_indices.shape[1]
         indices_flat = routing_indices.view(B, current_top_k)  # [B, top_k]
         weights_flat = routing_weights.view(B, current_top_k)  # [B, top_k]
-        
+
         # Squeeze logic handled by view if shapes align, otherwise explicit squeeze if needed
         # But indices from router are usually [B, k], sometimes [B, k, 1, 1] if spatial
         if routing_indices.dim() > 2:
-             indices_flat = indices_flat.squeeze(-1).squeeze(-1)
+            indices_flat = indices_flat.squeeze(-1).squeeze(-1)
         if routing_weights.dim() > 2:
-             weights_flat = weights_flat.squeeze(-1).squeeze(-1)
+            weights_flat = weights_flat.squeeze(-1).squeeze(-1)
 
         # Plan A: conditional computation (skip low-weight experts)
         # Threshold is tunable (accuracy vs speed)
@@ -113,16 +110,16 @@ class BatchedExpertComputation:
 
             # Apply weights
             if weights_flat.dim() == 1:
-                 # Flattened weights [B*top_k] or just [B] if k=1
-                 # If batch_indices is used to index, we assume weights_flat aligns with flattened indices
-                 # But wait, weights_flat is [B, top_k] flattened.
-                 # If expert_mask is 1D [B], then weights_flat should be 1D [B] too.
-                 weights = weights_flat[batch_indices].view(-1, 1, 1, 1)
+                # Flattened weights [B*top_k] or just [B] if k=1
+                # If batch_indices is used to index, we assume weights_flat aligns with flattened indices
+                # But wait, weights_flat is [B, top_k] flattened.
+                # If expert_mask is 1D [B], then weights_flat should be 1D [B] too.
+                weights = weights_flat[batch_indices].view(-1, 1, 1, 1)
             elif weights_flat.dim() == 0:
-                 # Scalar tensor, maybe from some reduction? Should not happen in normal flow.
-                 weights = weights_flat.view(-1, 1, 1, 1)
+                # Scalar tensor, maybe from some reduction? Should not happen in normal flow.
+                weights = weights_flat.view(-1, 1, 1, 1)
             else:
-                 weights = weights_flat[batch_indices, k_indices].view(-1, 1, 1, 1)
+                weights = weights_flat[batch_indices, k_indices].view(-1, 1, 1, 1)
             weighted_out = expert_out * weights
 
             # Accumulate outputs (efficient index_add_)
