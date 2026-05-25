@@ -62,7 +62,6 @@ from ultralytics.utils.torch_utils import (
     unset_deterministic,
     unwrap_model,
 )
-from ultralytics.nn.modules.moe import SparseDualMoE
 
 
 class BaseTrainer:
