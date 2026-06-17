@@ -1,19 +1,14 @@
+import weakref
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import copy
-import weakref
-from typing import Tuple, Dict, Optional, Union
-from .utils import FlopsUtils, get_safe_groups, BatchedExpertComputation
+
 from .experts import (
-    OptimizedSimpleExpert, FusedGhostExpert, SimpleExpert, GhostExpert,
-    InvertedResidualExpert, EfficientExpertGroup
+    InvertedResidualExpert,
 )
-from .routers import (
-    UltraEfficientRouter
-)
-from torch.amp import autocast
 from .loss import MoELoss
+from .routers import UltraEfficientRouter
+from .utils import BatchedExpertComputation, get_safe_groups
 
 # Global registry to store auxiliary losses for MoE modules
 # This prevents storing non-leaf tensors in the module instance, avoiding deepcopy errors
@@ -22,6 +17,7 @@ MOE_LOSS_REGISTRY = weakref.WeakKeyDictionary()
 # ---------------------------------------------------------------------------
 #   稀疏双路MoE
 # ---------------------------------------------------------------------------
+
 
 class SparseDualMoE(nn.Module):
     def __init__(
@@ -49,24 +45,21 @@ class SparseDualMoE(nn.Module):
         self.capacity_factor = capacity_factor
 
         # 注册 buffer
-        self.register_buffer('global_step', torch.tensor(0, dtype=torch.long))
-        self.register_buffer('current_balance_coeff', torch.tensor(balance_loss_coeff))
+        self.register_buffer("global_step", torch.tensor(0, dtype=torch.long))
+        self.register_buffer("current_balance_coeff", torch.tensor(balance_loss_coeff))
 
         # 1. 复杂度估计器
-        self.complexity_estimator = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels, 1, 1),
-            nn.Sigmoid()
-        )
+        self.complexity_estimator = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(in_channels, 1, 1), nn.Sigmoid())
 
         # 2. 使用 UltraEfficientRouter（轻量且保留空间信息）
         self.routing = UltraEfficientRouter(
-            in_channels, num_experts,
-            reduction=16,           # 更激进的压缩
+            in_channels,
+            num_experts,
+            reduction=16,  # 更激进的压缩
             top_k=top_k,
             noise_std=0.1,
             temperature=1.0,
-            pool_scale=8
+            pool_scale=8,
         )
 
         # 3. 使用分组卷积
@@ -75,27 +68,18 @@ class SparseDualMoE(nn.Module):
             # 可选异构：不同kernel_size
             ks = 3 if i % 2 == 0 else 5
             self.experts.append(
-                InvertedResidualExpert(
-                    in_channels, out_channels,
-                    expand_ratio=2.0,
-                    kernel_size=ks,
-                    groups=num_groups
-                )
+                InvertedResidualExpert(in_channels, out_channels, expand_ratio=2.0, kernel_size=ks, groups=num_groups)
             )
 
         # 4. 共享专家
         self.shared_expert = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 1, bias=False, groups=num_groups),
             nn.GroupNorm(get_safe_groups(out_channels, num_groups), out_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
 
         # 5. 可学习融合门控
-        self.fusion_gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(out_channels, 2, 1),
-            nn.Sigmoid()
-        )
+        self.fusion_gate = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(out_channels, 2, 1), nn.Sigmoid())
 
         # 6. 辅助损失（增加软路由支持）
         self.moe_loss_fn = MoELoss(
@@ -104,25 +88,26 @@ class SparseDualMoE(nn.Module):
             entropy_loss_coeff=entropy_loss_coeff,
             num_experts=num_experts,
             top_k=top_k,
-            use_soft_balancing=True   # 使用概率代替硬计数，更平滑
+            use_soft_balancing=True,  # 使用概率代替硬计数，更平滑
         )
 
     def forward(self, x):
-        B, C, H, W = x.shape
+        _B, _C, _H, _W = x.shape
 
         # 动态 top_k
         complexity = self.complexity_estimator(x).mean()
         dynamic_top_k = max(1, min(self.top_k, int(self.top_k * complexity * self.capacity_factor)))
 
         # 路由（支持动态 top_k）
-        routing_weights, routing_indices, usage_freq, importance, z_loss_val, probs = self.routing(x, top_k=dynamic_top_k)
+        routing_weights, routing_indices, _usage_freq, _importance, _z_loss_val, probs = self.routing(
+            x, top_k=dynamic_top_k
+        )
         # 共享专家
         shared_out = self.shared_expert(x)
 
         # 稀疏专家计算
         expert_out = BatchedExpertComputation.compute_sparse_experts_batched(
-            x, self.experts, routing_weights, routing_indices,
-            dynamic_top_k, self.num_experts
+            x, self.experts, routing_weights, routing_indices, dynamic_top_k, self.num_experts
         )
 
         # 可学习融合
@@ -142,7 +127,7 @@ class SparseDualMoE(nn.Module):
             self.moe_loss_fn.balance_loss_coeff = coeff
 
             # 计算辅助损失（使用软概率）
-            aux_loss = self.moe_loss_fn(probs, self.routing.router(x).clamp(-30,30), routing_indices)
+            aux_loss = self.moe_loss_fn(probs, self.routing.router(x).clamp(-30, 30), routing_indices)
             MOE_LOSS_REGISTRY[self] = aux_loss
             self.global_step.add_(1)
 
