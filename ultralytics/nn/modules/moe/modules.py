@@ -103,6 +103,14 @@ class SparseDualMoE(nn.Module):
             use_soft_balancing=True
         )
 
+        # Metrics tracking buffers
+        self.register_buffer('_expert_hits', torch.zeros(num_experts))
+        self.register_buffer('_token_count', torch.zeros(1))
+        self.register_buffer('_descriptor_sum', torch.zeros(1))
+        self.register_buffer('_descriptor_count', torch.zeros(1))
+        self.register_buffer('_topk_sum', torch.zeros(1))
+        self.register_buffer('_topk_count', torch.zeros(1))
+
     def forward(self, x):
         B, C, H, W = x.shape
 
@@ -157,4 +165,44 @@ class SparseDualMoE(nn.Module):
             MOE_LOSS_REGISTRY[self] = aux_loss
             self.global_step.add_(1)
 
+        # Metrics accumulation (training and eval)
+        with torch.no_grad():
+            # Expert hits: count which experts were selected
+            valid_mask = k_range < top_k_expanded
+            for e in range(self.num_experts):
+                self._expert_hits[e] += ((routing_indices == e) & valid_mask).sum().float()
+            self._token_count += routing_indices.numel() * valid_mask.float().mean().item()
+            # Descriptor stats
+            self._descriptor_sum += s.sum()
+            self._descriptor_count += B
+            # Top-k stats
+            self._topk_sum += top_k_per_sample.float().sum()
+            self._topk_count += B
+
         return output
+
+    def get_metrics(self):
+        """Return MoE diagnostic metrics for the current epoch."""
+        total = self._token_count.item()
+        if total < 1:
+            return {}
+        hits = self._expert_hits / total  # normalized
+        ideal = 1.0 / self.num_experts
+        return {
+            'expert_usage': {f'e{i}': hits[i].item() for i in range(self.num_experts)},
+            'max_usage': hits.max().item(),
+            'min_usage': hits.min().item(),
+            'usage_std': hits.std().item(),
+            'dead_experts': int((hits < 0.1 * ideal).sum().item()),
+            'avg_descriptor': (self._descriptor_sum / self._descriptor_count).item(),
+            'avg_topk': (self._topk_sum / self._topk_count).item(),
+        }
+
+    def reset_metrics(self):
+        """Reset accumulated metrics for the next epoch."""
+        self._expert_hits.zero_()
+        self._token_count.zero_()
+        self._descriptor_sum.zero_()
+        self._descriptor_count.zero_()
+        self._topk_sum.zero_()
+        self._topk_count.zero_()
