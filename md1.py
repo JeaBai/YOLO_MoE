@@ -3,7 +3,7 @@ from ultralytics import YOLO
 
 # 加载模型配置文件（仅结构）
 # model = YOLO('yolo26.yaml')  # 返回的是 YOLO 对象   D:\Users\Bai Jia\source\PycharmProjects\YOLOv26\ultralytics-main\ultralytics\cfg\models\moe26\YOLO_MoEBlock.yaml
-model = YOLO('./ultralytics/cfg/models/moe26/YOLO_SparseDualMoE-v0_4.yaml')
+model = YOLO('./ultralytics/cfg/models/moe26/YOLO_BalanceMoE-v0_4.yaml')
 
 # model = YOLO('D:/Users/Bai Jia/source/PycharmProjects/YOLOv26/YOLO-Master-main/YOLO-Master-main/ultralytics/cfg/models/master/exp/yolo-master-v0_2.yaml')
 # D:/Users/Bai Jia/source/PycharmProjects/YOLOv26/YOLO-Master-main/YOLO-Master-main/ultralytics/cfg/models/master/exp/yolo-master-v0_7.yaml
