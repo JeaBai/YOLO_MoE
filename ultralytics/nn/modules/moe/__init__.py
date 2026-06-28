@@ -22,6 +22,8 @@ from .utils import (
     BatchedExpertComputation
 )
 
+from .descriptor import ExplicitDescriptor, direct_mapping
+
 from .analysis import ExpertUsageTracker, diagnose_model
 from .pruning import prune_moe_model
 
@@ -40,6 +42,8 @@ __all__ = [
     "ExpertUsageTracker",
     "diagnose_model",
     "prune_moe_model",
-    "SparseDualMoE"
+    "SparseDualMoE",
+    "ExplicitDescriptor",
+    "direct_mapping",
 ]
 
