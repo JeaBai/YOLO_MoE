@@ -4,6 +4,8 @@
 from collections import defaultdict
 from copy import deepcopy
 
+from ultralytics.utils.callbacks.moe_callback import on_train_epoch_end as moe_on_train_epoch_end
+
 # Trainer callbacks ----------------------------------------------------------------------------------------------------
 
 
@@ -151,7 +153,7 @@ default_callbacks = {
     "optimizer_step": [optimizer_step],
     "on_before_zero_grad": [on_before_zero_grad],
     "on_train_batch_end": [on_train_batch_end],
-    "on_train_epoch_end": [on_train_epoch_end],
+    "on_train_epoch_end": [on_train_epoch_end, moe_on_train_epoch_end],
     "on_fit_epoch_end": [on_fit_epoch_end],  # fit = train + val
     "on_model_save": [on_model_save],
     "on_train_end": [on_train_end],
