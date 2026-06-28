@@ -1,0 +1,26 @@
+# Checklist
+
+- [x] `ExplicitDescriptor` 模块存在且参数量为 0
+- [x] `ExplicitDescriptor` 输出值域在 `[0, 1]` 内
+- [x] `ExplicitDescriptor` 确定性：相同输入产生相同输出
+- [x] `ExplicitDescriptor` 小分辨率输入（2×2）不崩溃
+- [x] `direct_mapping` 函数闭式解正确：`top_k = 1 + round(clamp(s, 0, 1) × (K_max - 1))`
+- [x] `direct_mapping` 输出为整数类型 `[B]` 张量
+- [x] `SparseDualMoE` 不再包含 `complexity_estimator` 属性
+- [x] `SparseDualMoE` 不再包含 `forced_experts`、`hunger_counters` 属性
+- [x] `SparseDualMoE` 包含 `descriptor` 属性（类型为 `ExplicitDescriptor`）
+- [x] `SparseDualMoE` 包含 `cascade_weight` 属性
+- [x] `SparseDualMoE` 构造函数不接受 `capacity_factor`、`hysteresis_low`、`hysteresis_high`、`distill_coeff`、`forced_experts`、`hunger_threshold`、`forced_expert_weight`、`random_force_prob`、`estimator_entropy_coeff`
+- [x] `SparseDualMoE.forward()` 不执行蒸馏损失计算
+- [x] `SparseDualMoE.forward()` 不执行强制激活专家逻辑
+- [x] `SparseDualMoE.forward()` 不调用 `complexity_estimator`
+- [x] `SparseDualMoE.forward()` 使用 `ExplicitDescriptor` 计算复杂度分数
+- [x] `SparseDualMoE.forward()` 使用 `direct_mapping` 计算每样本 top_k
+- [x] `SparseDualMoE.forward()` 通过有效性掩码按 top_k 截断路由权重
+- [x] `SparseDualMoE.forward()` 同一样本内所有空间位置共享同一个 top_k
+- [x] YAML 配置文件 `YOLO_SparseDualMoE.yaml` 使用新参数格式
+- [x] YAML 配置文件中 P4 层 `cascade_weight=0.75`，P5 层 `cascade_weight=1.0`
+- [x] 模型可以从 YAML 配置正确构建
+- [x] 模型前向传播不产生 NaN/Inf
+- [x] 所有单元测试通过
+- [x] `__init__.py` 正确导出 `ExplicitDescriptor` 和 `direct_mapping`
