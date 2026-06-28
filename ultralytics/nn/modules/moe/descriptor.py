@@ -30,3 +30,20 @@ class ExplicitDescriptor(nn.Module):
         s = self.alpha * var_sample + self.beta * energy_sample
         s = torch.clamp(s, 0.0, 1.0)
         return s.view(B, 1, 1, 1)
+
+
+def direct_mapping(s: torch.Tensor, k_max: int) -> torch.Tensor:
+    """Closed-form per-sample top_k mapping.
+    
+    Formula: top_k = 1 + round(clamp(s, 0, 1) * (k_max - 1))
+    
+    Args:
+        s: Complexity scores [B, 1, 1, 1] with values nominally in [0, 1]
+        k_max: Maximum number of experts to activate
+        
+    Returns:
+        top_k: Integer tensor [B] with values in [1, k_max]
+    """
+    s_clamped = s.clamp(0.0, 1.0)
+    top_k = 1 + torch.floor(s_clamped * (k_max - 1) + 0.5).int()
+    return top_k.view(-1)  # [B]
