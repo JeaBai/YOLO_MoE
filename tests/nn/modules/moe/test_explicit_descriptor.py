@@ -10,7 +10,7 @@ from ultralytics.nn.modules.moe.descriptor import ExplicitDescriptor
 class TestExplicitDescriptor:
     @pytest.fixture
     def descriptor(self):
-        return ExplicitDescriptor(alpha=0.7, beta=0.3)
+        return ExplicitDescriptor(alpha=0.5, beta=0.5)
 
     def test_output_shape(self, descriptor):
         x = torch.randn(4, 64, 32, 32)
@@ -21,6 +21,23 @@ class TestExplicitDescriptor:
         x = torch.randn(4, 64, 32, 32)
         s = descriptor(x)
         assert (s >= 0.0).all() and (s <= 1.0).all(), f"Output out of [0,1]: min={s.min().item():.4f}, max={s.max().item():.4f}"
+
+    def test_batch_minmax_normalization_span(self, descriptor):
+        """With B>=2, min-max normalization produces large dynamic range (>0.5 span)."""
+        x = torch.randn(8, 64, 32, 32)
+        s = descriptor(x)
+        span = s.max().item() - s.min().item()
+        assert span > 0.5, f"Dynamic range too narrow: span={span:.4f}, expected > 0.5"
+        # All scores should be in [0, 1]
+        assert (s >= 0.0).all() and (s <= 1.0).all()
+
+    def test_single_batch_no_crash(self, descriptor):
+        """B=1 should not crash (min==max → zero)."""
+        x = torch.randn(1, 64, 32, 32)
+        s = descriptor(x)
+        assert s.shape == (1, 1, 1, 1)
+        assert not torch.isnan(s).any(), "Output contains NaN for B=1"
+        assert (s >= 0.0).all() and (s <= 1.0).all()
 
     def test_zero_parameters(self, descriptor):
         n_params = sum(p.numel() for p in descriptor.parameters())
@@ -40,29 +57,23 @@ class TestExplicitDescriptor:
         assert not torch.isinf(s).any(), "Output contains Inf"
 
     def test_high_variance_gives_high_score(self, descriptor):
-        # High variance input: alternating 1 and -1
-        x_high = torch.ones(4, 64, 32, 32)
-        x_high[:, ::2] = -1.0  # alternating channels
-        s_high = descriptor(x_high)
-
-        # Low variance input: all zeros
-        x_low = torch.zeros(4, 64, 32, 32)
-        s_low = descriptor(x_low)
-
-        # High variance should give higher score
-        assert (s_high > s_low).all(), f"high={s_high.view(-1)}, low={s_low.view(-1)}"
+        """Within same batch, higher variance samples should get higher score."""
+        # Create mixed batch: 2 high-variance, 2 low-variance
+        x = torch.randn(4, 64, 32, 32)
+        x[2:] *= 0.01  # low-variance samples
+        s = descriptor(x)
+        # High-variance samples (0,1) should score higher than low-variance (2,3)
+        assert s[0].item() > s[2].item(), f"high={s[0].item():.4f}, low={s[2].item():.4f}"
+        assert s[1].item() > s[3].item(), f"high={s[1].item():.4f}, low={s[3].item():.4f}"
 
     def test_low_variance_gives_low_score(self, descriptor):
-        # Constant input should give very low score
-        x_constant = torch.ones(4, 64, 32, 32) * 0.5
-        s = descriptor(x_constant)
-
-        # Normal random input
-        x_random = torch.randn(4, 64, 32, 32)
-        s_random = descriptor(x_random)
-
-        # Constant input should have lower score than random
-        assert (s_random > s).all(), f"constant={s.view(-1)}, random={s_random.view(-1)}"
+        """Within same batch, constant input should get lowest score."""
+        x = torch.randn(4, 64, 32, 32)
+        x[0] = 0.0  # zero constant sample
+        s = descriptor(x)
+        # Zero constant sample should have the lowest score (var=0, energy=0)
+        assert s[0].item() <= s[1:].min().item(), \
+            f"constant={s[0].item():.4f}, min_others={s[1:].min().item():.4f}"
 
 
 class TestSparseDualMoEExplicit:
@@ -74,7 +85,7 @@ class TestSparseDualMoEExplicit:
             out_channels=64,
             num_experts=4,
             top_k=4,
-            cascade_weight=0.75,
+            cascade_weight=1.0,
             num_groups=4,
         )
 
@@ -107,7 +118,7 @@ class TestSparseDualMoEExplicit:
     def test_sparse_dual_moe_has_cascade_weight(self, moe_module):
         assert hasattr(moe_module, 'cascade_weight'), \
             "cascade_weight should exist"
-        assert moe_module.cascade_weight == 0.75
+        assert moe_module.cascade_weight == 1.0
 
     def test_sparse_dual_moe_training_forward(self, moe_module):
         x = torch.randn(2, 64, 32, 32)

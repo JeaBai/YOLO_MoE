@@ -26,8 +26,8 @@ class SparseDualMoE(nn.Module):
         entropy_loss_coeff: float = 0.001,
         num_groups: int = 8,
         cascade_weight: float = 1.0,
-        descriptor_alpha: float = 0.7,
-        descriptor_beta: float = 0.3,
+        descriptor_alpha: float = 0.5,
+        descriptor_beta: float = 0.5,
     ):
         print("{" +
               f"num_experts: {num_experts}, "

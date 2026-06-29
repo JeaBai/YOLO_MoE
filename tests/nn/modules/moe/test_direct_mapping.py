@@ -3,7 +3,7 @@ import pytest
 import sys
 sys.path.insert(0, '.')
 
-from ultralytics.nn.modules.moe.descriptor import direct_mapping
+from ultralytics.nn.modules.moe.descriptor import direct_mapping, ExplicitDescriptor
 
 
 class TestDirectMapping:
@@ -60,3 +60,30 @@ class TestDirectMapping:
         s = torch.ones(4, 1, 1, 1)
         top_k = direct_mapping(s, k_max=4)
         assert (top_k == 4).all(), f"Expected all 4, got {top_k}"
+
+
+class TestDescriptorWithMapping:
+    """Integration test: normalized descriptor + direct_mapping produces top_k >= 2."""
+
+    def test_descriptor_produces_varied_topk(self):
+        """After min-max normalization, some samples should get top_k >= 2."""
+        descriptor = ExplicitDescriptor(alpha=0.5, beta=0.5)
+        x = torch.randn(8, 64, 32, 32)
+        with torch.no_grad():
+            s = descriptor(x)
+        top_k = direct_mapping(s, k_max=4)
+        # With B=8 and full-range normalization, at least some samples should get top_k >= 2
+        assert (top_k >= 2).any(), f"Expected some samples with top_k >= 2, got all {top_k.tolist()}"
+        # top_k should never exceed k_max
+        assert (top_k <= 4).all()
+        assert (top_k >= 1).all()
+
+    def test_descriptor_full_range_topk(self):
+        """With B=8, descriptor should produce both top_k=1 and top_k=4 samples."""
+        descriptor = ExplicitDescriptor(alpha=0.5, beta=0.5)
+        x = torch.randn(8, 64, 32, 32)
+        with torch.no_grad():
+            s = descriptor(x)
+        top_k = direct_mapping(s, k_max=4)
+        unique_vals = top_k.unique().tolist()
+        assert len(unique_vals) >= 2, f"Expected at least 2 different top_k values, got {unique_vals}"

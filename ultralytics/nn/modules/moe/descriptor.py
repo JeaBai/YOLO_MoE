@@ -9,9 +9,10 @@ class ExplicitDescriptor(nn.Module):
     - Channel-wise variance averaged over spatial dimensions
     - Channel-spatial mean energy (L2 norm of mean vector)
     
-    Both are normalized via batch min-max, then combined with learnable weights.
+    Both are normalized via within-batch min-max, then combined with fixed weights.
+    All operations are deterministic, no learnable parameters.
     """
-    def __init__(self, alpha: float = 0.7, beta: float = 0.3):
+    def __init__(self, alpha: float = 0.5, beta: float = 0.5):
         super().__init__()
         self.alpha = alpha
         self.beta = beta
@@ -27,8 +28,18 @@ class ExplicitDescriptor(nn.Module):
         mean_spatial = x.mean(dim=[2, 3])      # [B, C]
         energy_sample = mean_spatial.pow(2).sum(dim=1) / C  # [B]
 
-        s = self.alpha * var_sample + self.beta * energy_sample
-        s = torch.clamp(s, 0.0, 1.0)
+        # Within-batch min-max normalization to [0, 1]
+        def batch_minmax(v: torch.Tensor) -> torch.Tensor:
+            vmin, vmax = v.min(), v.max()
+            if vmax - vmin < 1e-8:
+                return torch.zeros_like(v)
+            return (v - vmin) / (vmax - vmin)
+
+        var_norm = batch_minmax(var_sample)
+        energy_norm = batch_minmax(energy_sample)
+        s = self.alpha * var_norm + self.beta * energy_norm
+        # No clamp needed: each term in [0, 1], sum in [0, alpha+beta]
+        # Since alpha+beta = 1.0, s is already in [0, 1]
         return s.view(B, 1, 1, 1)
 
 
