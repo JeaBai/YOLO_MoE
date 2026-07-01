@@ -80,8 +80,7 @@ from ultralytics.nn.modules import (
     C3k2UltraPro,
     C3k2MA,
     C3k2MA_Lite,
-    SparseDualMoE,
-    UltimateOptimizedMoE
+    SparseDualMoE
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, WINDOWS, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1626,8 +1625,7 @@ def parse_model(d, ch, verbose=True):
             C3k2UltraPro,
             C3k2MA,
             C3k2MA_Lite,
-            SparseDualMoE,
-            UltimateOptimizedMoE
+            SparseDualMoE
         }
     )
     repeat_modules = frozenset(  # modules with 'repeat' arguments

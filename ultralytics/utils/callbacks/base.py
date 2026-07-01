@@ -5,10 +5,6 @@ from collections import defaultdict
 from copy import deepcopy
 
 from ultralytics.utils.callbacks.moe_callback import on_train_epoch_end as moe_on_train_epoch_end
-from ultralytics.utils.callbacks.comprehensive_metrics import on_train_start as comp_on_train_start
-from ultralytics.utils.callbacks.comprehensive_metrics import on_fit_epoch_end as comp_on_fit_epoch_end
-from ultralytics.utils.callbacks.stability_monitor import on_train_start as stab_on_train_start
-from ultralytics.utils.callbacks.stability_monitor import on_train_batch_end as stab_on_train_batch_end
 
 # Trainer callbacks ----------------------------------------------------------------------------------------------------
 
@@ -151,14 +147,14 @@ default_callbacks = {
     # Run in trainer
     "on_pretrain_routine_start": [on_pretrain_routine_start],
     "on_pretrain_routine_end": [on_pretrain_routine_end],
-    "on_train_start": [on_train_start, comp_on_train_start, stab_on_train_start],
+    "on_train_start": [on_train_start],
     "on_train_epoch_start": [on_train_epoch_start],
     "on_train_batch_start": [on_train_batch_start],
     "optimizer_step": [optimizer_step],
     "on_before_zero_grad": [on_before_zero_grad],
-    "on_train_batch_end": [on_train_batch_end, stab_on_train_batch_end],
+    "on_train_batch_end": [on_train_batch_end],
     "on_train_epoch_end": [on_train_epoch_end, moe_on_train_epoch_end],
-    "on_fit_epoch_end": [on_fit_epoch_end, comp_on_fit_epoch_end],  # fit = train + val
+    "on_fit_epoch_end": [on_fit_epoch_end],  # fit = train + val
     "on_model_save": [on_model_save],
     "on_train_end": [on_train_end],
     "on_params_update": [on_params_update],

@@ -113,7 +113,7 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
-from .moe.modules import SparseDualMoE, UltimateOptimizedMoE
+from .moe.modules import SparseDualMoE
 
 __all__ = (
     "AIFI",
@@ -204,6 +204,5 @@ __all__ = (
     "YOLOESegment",
     "YOLOESegment26",
     "v10Detect",
-    "SparseDualMoE",
-    "UltimateOptimizedMoE"
+    "SparseDualMoE"
 )
