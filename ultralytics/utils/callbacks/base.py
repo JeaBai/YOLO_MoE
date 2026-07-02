@@ -5,6 +5,11 @@ from collections import defaultdict
 from copy import deepcopy
 
 from ultralytics.utils.callbacks.moe_callback import on_train_epoch_end as moe_on_train_epoch_end
+from ultralytics.utils.callbacks.comprehensive import (
+    comprehensive_on_train_start,
+    comprehensive_on_train_epoch_end,
+    comprehensive_on_train_end,
+)
 
 # Trainer callbacks ----------------------------------------------------------------------------------------------------
 
@@ -147,16 +152,16 @@ default_callbacks = {
     # Run in trainer
     "on_pretrain_routine_start": [on_pretrain_routine_start],
     "on_pretrain_routine_end": [on_pretrain_routine_end],
-    "on_train_start": [on_train_start],
+    "on_train_start": [on_train_start, comprehensive_on_train_start],
     "on_train_epoch_start": [on_train_epoch_start],
     "on_train_batch_start": [on_train_batch_start],
     "optimizer_step": [optimizer_step],
     "on_before_zero_grad": [on_before_zero_grad],
     "on_train_batch_end": [on_train_batch_end],
-    "on_train_epoch_end": [on_train_epoch_end, moe_on_train_epoch_end],
+    "on_train_epoch_end": [on_train_epoch_end, comprehensive_on_train_epoch_end, moe_on_train_epoch_end],
     "on_fit_epoch_end": [on_fit_epoch_end],  # fit = train + val
     "on_model_save": [on_model_save],
-    "on_train_end": [on_train_end],
+    "on_train_end": [on_train_end, comprehensive_on_train_end],
     "on_params_update": [on_params_update],
     "teardown": [teardown],
     # Run in validator
