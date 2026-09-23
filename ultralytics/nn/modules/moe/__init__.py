@@ -1,45 +1,34 @@
-from .modules import (
-    SparseDualMoE
-)
-
+from .analysis import ExpertUsageTracker, diagnose_model
 from .experts import (
-    OptimizedSimpleExpert,
+    DepthwiseSeparableConv,
+    EfficientExpertGroup,
     FusedGhostExpert,
-    SimpleExpert,
     GhostExpert,
     InvertedResidualExpert,
-    EfficientExpertGroup,
-    DepthwiseSeparableConv
+    OptimizedSimpleExpert,
+    SimpleExpert,
 )
-
+from .modules import SparseDualMoE
+from .pruning import prune_moe_model
 from .routers import (
     UltraEfficientRouter,
 )
-
-from .utils import (
-    FlopsUtils,
-    get_safe_groups,
-    BatchedExpertComputation
-)
-
-from .analysis import ExpertUsageTracker, diagnose_model
-from .pruning import prune_moe_model
+from .utils import BatchedExpertComputation, FlopsUtils, get_safe_groups
 
 __all__ = [
-    "OptimizedSimpleExpert",
+    "BatchedExpertComputation",
+    "DepthwiseSeparableConv",
+    "EfficientExpertGroup",
+    "ExpertUsageTracker",
+    "FlopsUtils",
     "FusedGhostExpert",
-    "SimpleExpert",
     "GhostExpert",
     "InvertedResidualExpert",
-    "EfficientExpertGroup",
-    "DepthwiseSeparableConv",
+    "OptimizedSimpleExpert",
+    "SimpleExpert",
+    "SparseDualMoE",
     "UltraEfficientRouter",
-    "FlopsUtils",
-    "get_safe_groups",
-    "BatchedExpertComputation",
-    "ExpertUsageTracker",
     "diagnose_model",
+    "get_safe_groups",
     "prune_moe_model",
-    "SparseDualMoE"
 ]
-
