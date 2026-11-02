@@ -1,17 +1,18 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import weakref
-from .utils import get_safe_groups, BatchedExpertComputation
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
 from .experts import InvertedResidualExpert
-from .routers import UltraEfficientRouter
 from .loss import MoELoss
+from .routers import UltraEfficientRouter
+from .utils import BatchedExpertComputation, get_safe_groups
 
 MOE_LOSS_REGISTRY = weakref.WeakKeyDictionary()
 
 
 class SparseDualMoE(nn.Module):
-
     def __init__(
         self,
         in_channels: int,
@@ -28,32 +29,31 @@ class SparseDualMoE(nn.Module):
         estimator_entropy_coeff: float = 0.01,
         hysteresis_low: float = 0.3,
         hysteresis_high: float = 0.7,
-        distill_coeff: float = 0.0,             # 知识共享系数，0表示关闭
-        forced_experts: bool = True,            # 强制激活专家，False关闭
-        hunger_threshold: int = 3,              # 连续未被选中的次数阈值
-        forced_expert_weight: float = 0.5,      # 强制激活专家的输出权重
-        random_force_prob: float = 0.2,         # 无饥饿专家时随机激活概率
+        distill_coeff: float = 0.0,  # 知识共享系数，0表示关闭
+        forced_experts: bool = True,  # 强制激活专家，False关闭
+        hunger_threshold: int = 3,  # 连续未被选中的次数阈值
+        forced_expert_weight: float = 0.5,  # 强制激活专家的输出权重
+        random_force_prob: float = 0.2,  # 无饥饿专家时随机激活概率
     ):
-        print("{" +
-              f"num_experts: {num_experts}, "
-              f"top_k: {top_k}, "
-              f"balance_loss_coeff: {balance_loss_coeff}, "
-              f"balance_loss_min: {balance_loss_min}, "
-              f"balance_warmup_steps: {balance_warmup_steps}, "
-              f"router_z_loss_coeff: {router_z_loss_coeff}, "
-              f"entropy_loss_coeff: {entropy_loss_coeff}, "
-              f"capacity_factor: {capacity_factor}, "
-              f"num_groups: {num_groups}, "
-              f"estimator_entropy_coeff: {estimator_entropy_coeff}, "
-              f"hysteresis_low: {hysteresis_low}, "
-              f"hysteresis_high: {hysteresis_high}, "
-              f"distill_coeff: {distill_coeff}, "
-              f"forced_experts: {forced_experts}, "
-              f"hunger_threshold: {hunger_threshold}, "
-              f"forced_expert_weight: {forced_expert_weight}, "
-              f"random_force_prob: {random_force_prob}, "
-              + "}"
-              )
+        print(
+            "{" + f"num_experts: {num_experts}, "
+            f"top_k: {top_k}, "
+            f"balance_loss_coeff: {balance_loss_coeff}, "
+            f"balance_loss_min: {balance_loss_min}, "
+            f"balance_warmup_steps: {balance_warmup_steps}, "
+            f"router_z_loss_coeff: {router_z_loss_coeff}, "
+            f"entropy_loss_coeff: {entropy_loss_coeff}, "
+            f"capacity_factor: {capacity_factor}, "
+            f"num_groups: {num_groups}, "
+            f"estimator_entropy_coeff: {estimator_entropy_coeff}, "
+            f"hysteresis_low: {hysteresis_low}, "
+            f"hysteresis_high: {hysteresis_high}, "
+            f"distill_coeff: {distill_coeff}, "
+            f"forced_experts: {forced_experts}, "
+            f"hunger_threshold: {hunger_threshold}, "
+            f"forced_expert_weight: {forced_expert_weight}, "
+            f"random_force_prob: {random_force_prob}, " + "}"
+        )
 
         super().__init__()
         self.num_experts = num_experts
@@ -71,25 +71,16 @@ class SparseDualMoE(nn.Module):
         self.forced_expert_weight = forced_expert_weight
         self.random_force_prob = random_force_prob
 
-        self.register_buffer('hunger_counters', torch.zeros(self.num_experts, dtype=torch.long))
-        self.register_buffer('_prev_infer_topk', torch.tensor(self.top_k, dtype=torch.long), persistent=False)
-        self.register_buffer('global_step', torch.tensor(0, dtype=torch.long))
+        self.register_buffer("hunger_counters", torch.zeros(self.num_experts, dtype=torch.long))
+        self.register_buffer("_prev_infer_topk", torch.tensor(self.top_k, dtype=torch.long), persistent=False)
+        self.register_buffer("global_step", torch.tensor(0, dtype=torch.long))
 
         # 复杂度估计器
-        self.complexity_estimator = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels, 1, 1),
-            nn.Sigmoid()
-        )
+        self.complexity_estimator = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(in_channels, 1, 1), nn.Sigmoid())
 
         # 路由
         self.routing = UltraEfficientRouter(
-            in_channels, num_experts,
-            reduction=16,
-            top_k=top_k,
-            noise_std=0.1,
-            temperature=1.0,
-            pool_scale=8
+            in_channels, num_experts, reduction=16, top_k=top_k, noise_std=0.1, temperature=1.0, pool_scale=8
         )
 
         # 专家（支持可选异构）
@@ -97,27 +88,18 @@ class SparseDualMoE(nn.Module):
         for i in range(num_experts):
             ks = 3 if i % 2 == 0 else 5
             self.experts.append(
-                InvertedResidualExpert(
-                    in_channels, out_channels,
-                    expand_ratio=2.0,
-                    kernel_size=ks,
-                    groups=num_groups
-                )
+                InvertedResidualExpert(in_channels, out_channels, expand_ratio=2.0, kernel_size=ks, groups=num_groups)
             )
 
         # 共享专家
         self.shared_expert = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 1, bias=False, groups=num_groups),
             nn.GroupNorm(get_safe_groups(out_channels, num_groups), out_channels),
-            nn.SiLU(inplace=True)
+            nn.SiLU(inplace=True),
         )
 
         # 融合门控（额外拼接动态 top-k 信息）
-        self.fusion_gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(out_channels + 1, 2, 1),
-            nn.Sigmoid()
-        )
+        self.fusion_gate = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Conv2d(out_channels + 1, 2, 1), nn.Sigmoid())
 
         # 辅助损失
         self.moe_loss_fn = MoELoss(
@@ -126,15 +108,15 @@ class SparseDualMoE(nn.Module):
             entropy_loss_coeff=entropy_loss_coeff,
             num_experts=num_experts,
             top_k=top_k,
-            use_soft_balancing=True
+            use_soft_balancing=True,
         )
 
     def forward(self, x):
-        B, C, H, W = x.shape
+        B, _C, _H, _W = x.shape
 
         # 1. 复杂度估计与动态 Top-K
-        complexity = self.complexity_estimator(x)                    # [B, 1, 1, 1]
-        complexity_flat = complexity.view(B)                        # [B]
+        complexity = self.complexity_estimator(x)  # [B, 1, 1, 1]
+        complexity_flat = complexity.view(B)  # [B]
 
         if self.training:
             dynamic_top_k_float = self.top_k * complexity_flat * self.capacity_factor
@@ -142,7 +124,7 @@ class SparseDualMoE(nn.Module):
 
             if self.estimator_entropy_coeff > 0:
                 p = complexity_flat.clamp(1e-6, 1 - 1e-6)
-                entropy = - (p * torch.log(p) + (1 - p) * torch.log(1 - p))
+                entropy = -(p * torch.log(p) + (1 - p) * torch.log(1 - p))
                 est_entropy_loss = entropy.mean()
             else:
                 est_entropy_loss = torch.tensor(0.0, device=x.device)
@@ -159,8 +141,8 @@ class SparseDualMoE(nn.Module):
 
         # 2. 路由
         routing_result = self.routing(x)
-        routing_weights = routing_result[0]                         # [B, top_k, 1, 1]
-        routing_indices = routing_result[1]                         # [B, top_k, 1, 1]
+        routing_weights = routing_result[0]  # [B, top_k, 1, 1]
+        routing_indices = routing_result[1]  # [B, top_k, 1, 1]
 
         # 3. 动态有效性掩码
         k_range = torch.arange(self.top_k, device=x.device).view(1, -1, 1, 1)
@@ -173,8 +155,7 @@ class SparseDualMoE(nn.Module):
         # 4. 共享专家与稀疏专家计算
         shared_out = self.shared_expert(x)
         expert_out = BatchedExpertComputation.compute_sparse_experts_batched(
-            x, self.experts, normalized_weights, routing_indices,
-            self.top_k, self.num_experts
+            x, self.experts, normalized_weights, routing_indices, self.top_k, self.num_experts
         )
 
         # 蒸馏损失
